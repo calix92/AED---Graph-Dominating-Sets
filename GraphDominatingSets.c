@@ -31,19 +31,44 @@
 // Check if the given set is a dominating set for the graph
 // Return 1 if true, or 0 otherwise
 //
-// A dominating set is a set of graph vertices such that every other
-// graph vertex not in the set is adjacent to a graph vertex in the set
-//
 int GraphIsDominatingSet(const Graph* g, IndicesSet* vertSet) {
   assert(g != NULL);
   assert(GraphIsDigraph(g) == 0);
   assert(IndicesSetIsEmpty(vertSet) == 0);
 
-  //
-  // TO BE COMPLETED
-  //
+  // Vamos percorrer todos os vértices do grafo
+  IndicesSet* allVertices = GraphGetSetVertices(g);
+  int v = IndicesSetGetFirstElem(allVertices);
 
-  return 0;
+  while (v != -1) {
+    // Se o vértice v NÃO está no conjunto dominante...
+    if (!IndicesSetContains(vertSet, v)) {
+      // ...temos de garantir que pelo menos um vizinho dele ESTÁ.
+      IndicesSet* neighbors = GraphGetSetAdjacentsTo(g, v);
+      int isCovered = 0;
+
+      int neighbor = IndicesSetGetFirstElem(neighbors);
+      while (neighbor != -1) {
+        if (IndicesSetContains(vertSet, neighbor)) {
+          isCovered = 1;
+          break; // Já encontrámos um vizinho no set, v está coberto!
+        }
+        neighbor = IndicesSetGetNextElem(neighbors);
+      }
+
+      IndicesSetDestroy(&neighbors);
+
+      // Se nenhum vizinho estiver no set, então vertSet NÃO é dominante.
+      if (!isCovered) {
+        IndicesSetDestroy(&allVertices);
+        return 0;
+      }
+    }
+    v = IndicesSetGetNextElem(allVertices);
+  }
+
+  IndicesSetDestroy(&allVertices);
+  return 1; // Passou em todos os testes
 }
 
 //
@@ -57,14 +82,33 @@ IndicesSet* GraphComputeMinDominatingSet(const Graph* g) {
   assert(g != NULL);
   assert(GraphIsDigraph(g) == 0);
 
-  //
-  // TO BE COMPLETED
-  //
+  unsigned int range = GraphGetVertexRange(g);
+  IndicesSet* currentSet = IndicesSetCreateEmpty(range);
+  IndicesSet* bestSet = NULL;
 
-  // Change this according to your algorithm
-  IndicesSet* result = IndicesSetCreateEmpty(GraphGetVertexRange(g));
+  // Loop para testar todos os subconjuntos possíveis
+  do {
+    // Ignorar conjunto vazio (a menos que o grafo seja vazio, mas o assert protege)
+    if (IndicesSetIsEmpty(currentSet)) continue;
 
-  return result;
+    // Se este conjunto domina o grafo...
+    if (GraphIsDominatingSet(g, currentSet)) {
+      // ...e se for melhor (menor) que o melhor que já tínhamos...
+      if (bestSet == NULL || IndicesSetGetNumElems(currentSet) < IndicesSetGetNumElems(bestSet)) {
+        // Atualizamos o bestSet
+        if (bestSet != NULL) IndicesSetDestroy(&bestSet);
+        bestSet = IndicesSetCreateCopy(currentSet);
+      }
+    }
+  } while (IndicesSetNextSubset(currentSet));
+
+  IndicesSetDestroy(&currentSet);
+
+  if (bestSet == NULL) {
+    return IndicesSetCreateEmpty(range); // Fallback
+  }
+
+  return bestSet;
 }
 
 //
@@ -78,12 +122,48 @@ IndicesSet* GraphComputeMinWeightDominatingSet(const Graph* g) {
   assert(g != NULL);
   assert(GraphIsDigraph(g) == 0);
 
-  //
-  // TO BE COMPLETED
-  //
+  // 1. Calcular os pesos de todos os vértices uma única vez
+  double* weights = GraphComputeVertexWeights(g);
+  unsigned int range = GraphGetVertexRange(g);
 
-  // Change this according to your algorithm
-  IndicesSet* result = IndicesSetCreateEmpty(GraphGetVertexRange(g));
+  IndicesSet* currentSet = IndicesSetCreateEmpty(range);
+  IndicesSet* bestSet = NULL;
+  double minWeight = -1.0; // -1 indica que ainda não encontrámos nenhum válido
 
-  return result;
+  do {
+    if (IndicesSetIsEmpty(currentSet)) continue;
+
+    // 2. Calcular o peso deste conjunto candidato
+    double currentWeight = 0.0;
+    int v = IndicesSetGetFirstElem(currentSet);
+    while (v != -1) {
+      if (weights[v] != -1.0) {
+        currentWeight += weights[v];
+      }
+      v = IndicesSetGetNextElem(currentSet);
+    }
+
+    // OTIMIZAÇÃO: Se já temos uma solução melhor ou igual, saltamos esta iteração
+    // (Poupamos a chamada cara a GraphIsDominatingSet)
+    if (minWeight != -1.0 && currentWeight >= minWeight) {
+      continue;
+    }
+
+    // 3. Se passou no teste do peso, verificamos se domina
+    if (GraphIsDominatingSet(g, currentSet)) {
+      if (bestSet == NULL || currentWeight < minWeight) {
+        if (bestSet != NULL) IndicesSetDestroy(&bestSet);
+        bestSet = IndicesSetCreateCopy(currentSet);
+        minWeight = currentWeight;
+      }
+    }
+
+  } while (IndicesSetNextSubset(currentSet));
+
+  free(weights); // Não esquecer de limpar a memória do array de pesos
+  IndicesSetDestroy(&currentSet);
+
+  if (bestSet == NULL) return IndicesSetCreateEmpty(range);
+
+  return bestSet;
 }

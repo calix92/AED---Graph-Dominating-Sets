@@ -260,15 +260,62 @@ Graph* GraphGetSubgraph(const Graph* g, IndicesSet* vertSet) {
   assert(IndicesSetIsSubset(vertSet, g->verticesSet));
 
   // The "empty" subgraph
-  Graph* new = GraphCreateEmpty(g->indicesRange, g->isDigraph, g->isWeighted);
+  Graph* new_g = GraphCreateEmpty(g->indicesRange, g->isDigraph, g->isWeighted);
 
-  //
-  // TO BE COMPLETED
-  //
+  // 1. Adicionar os vértices do conjunto ao novo grafo
+  int v_idx = IndicesSetGetFirstElem(vertSet);
+  while (v_idx != -1) {
+    GraphAddVertex(new_g, (unsigned int)v_idx);
+    v_idx = IndicesSetGetNextElem(vertSet);
+  }
 
-  GraphCheckInvariants(new);
+  // 2. Adicionar as arestas
+  // Para cada vértice 'u' no conjunto, verificamos as suas arestas no grafo original.
+  // Se a aresta liga a um vértice 'w' que TAMBÉM está no conjunto, adicionamos ao novo grafo.
+  
+  v_idx = IndicesSetGetFirstElem(vertSet);
+  while (v_idx != -1) {
+    unsigned int u = (unsigned int)v_idx;
 
-  return new;
+    // Encontrar o vértice u no grafo original para aceder à sua lista de arestas
+    struct _Vertex search_dummy;
+    search_dummy.id = u;
+    
+    // O vértice tem de existir, pois vertSet é subconjunto
+    if (ListSearch(g->verticesList, &search_dummy) == 0) {
+      struct _Vertex* u_ptr = (struct _Vertex*)ListGetCurrentItem(g->verticesList);
+      List* edges = u_ptr->edgesList;
+      
+      // Iterar sobre as arestas de u
+      if (!ListIsEmpty(edges)) {
+        ListMoveToHead(edges);
+        for (int i = 0; i < ListGetSize(edges); ListMoveToNext(edges), i++) {
+          struct _Edge* e = (struct _Edge*)ListGetCurrentItem(edges);
+          unsigned int w = e->adjVertex;
+          
+          // Verificar se o vizinho w também pertence ao subconjunto
+          if (IndicesSetContains(vertSet, w)) {
+            // Otimização para grafos não orientados: 
+            // Só adicionamos se u < w para evitar tentar adicionar a mesma aresta duas vezes 
+            // (GraphAddEdge falharia silenciosamente na segunda vez, mas poupamos trabalho).
+            // Em grafos orientados, adicionamos sempre.
+            if (g->isDigraph || u < w) {
+              if (g->isWeighted) {
+                GraphAddWeightedEdge(new_g, u, w, e->weight);
+              } else {
+                GraphAddEdge(new_g, u, w);
+              }
+            }
+          }
+        }
+      }
+    }
+    v_idx = IndicesSetGetNextElem(vertSet);
+  }
+
+  GraphCheckInvariants(new_g);
+
+  return new_g;
 }
 
 // Graph
@@ -375,11 +422,36 @@ IndicesSet* GraphGetSetVertices(const Graph* g) {
 IndicesSet* GraphGetSetAdjacentsTo(const Graph* g, unsigned int v) {
   assert(IndicesSetContains(g->verticesSet, (uint16_t)v));
 
+  // 1. Criar o conjunto vazio com o tamanho adequado (range do grafo)
   IndicesSet* adjacents_set = IndicesSetCreateEmpty(g->indicesRange);
 
-  //
-  // TO BE COMPLETED
-  //
+  // 2. Encontrar o vértice v na lista de vértices do grafo
+  // Usamos um "dummy" apenas para a pesquisa, pois o comparador usa o ID.
+  struct _Vertex search_dummy;
+  search_dummy.id = v;
+  
+  // Posiciona o cursor da lista no vértice v
+  if (ListSearch(g->verticesList, (void*)(&search_dummy)) == -1) {
+      // Se por algum motivo não encontrar (o assert acima protege, mas é boa prática)
+      return adjacents_set; 
+  }
+
+  struct _Vertex* vertex_ptr = (struct _Vertex*)ListGetCurrentItem(g->verticesList);
+
+  // 3. Percorrer a lista de arestas desse vértice
+  List* edges = vertex_ptr->edgesList;
+  if (ListIsEmpty(edges)) {
+      return adjacents_set;
+  }
+
+  ListMoveToHead(edges);
+  unsigned int i = 0;
+  for (; i < ListGetSize(edges); ListMoveToNext(edges), i++) {
+    struct _Edge* e = (struct _Edge*)ListGetCurrentItem(edges);
+    
+    // 4. Adicionar o vértice adjacente ao conjunto
+    IndicesSetAdd(adjacents_set, e->adjVertex);
+  }
 
   return adjacents_set;
 }
@@ -395,6 +467,8 @@ IndicesSet* GraphGetSetAdjacentsTo(const Graph* g, unsigned int v) {
 // The weight of a vertex is the sum of the weights of its edges
 // If edges have no weights, the weight of a vertex is its degree
 double* GraphComputeVertexWeights(const Graph* g) {
+  assert(g->isDigraph == 0); // Garantir que é não-orientado
+
   double* weightsArray = malloc(g->indicesRange * sizeof(double));
   if (weightsArray == NULL) abort();
 
@@ -403,9 +477,31 @@ double* GraphComputeVertexWeights(const Graph* g) {
     weightsArray[v] = -1.0;
   }
 
-  //
-  // TO BE COMPLETED
-  //
+  // Percorrer a lista de vértices que realmente existem no grafo
+  List* vertices = g->verticesList;
+  ListMoveToHead(vertices);
+  
+  for (int i = 0; i < ListGetSize(vertices); ListMoveToNext(vertices), i++) {
+    struct _Vertex* v = (struct _Vertex*)ListGetCurrentItem(vertices);
+    double current_weight = 0.0;
+
+    if (g->isWeighted) {
+      // Se for pesado, somamos os pesos de todas as arestas adjacentes
+      List* edges = v->edgesList;
+      ListMoveToHead(edges);
+      for (int j = 0; j < ListGetSize(edges); ListMoveToNext(edges), j++) {
+        struct _Edge* e = (struct _Edge*)ListGetCurrentItem(edges);
+        current_weight += e->weight;
+      }
+    } else {
+      // Se não for pesado, o peso é igual ao grau (número de arestas)
+      // Como é não-orientado, outDegree guarda o grau do vértice
+      current_weight = (double)v->outDegree;
+    }
+
+    // Guardar o peso na posição correspondente ao ID do vértice
+    weightsArray[v->id] = current_weight;
+  }
 
   return weightsArray;
 }
