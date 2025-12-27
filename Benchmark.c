@@ -3,7 +3,7 @@
 //
 // ESTE FICHEIRO NÃO FAZ PARTE DO ESQUELETO BASE DO PROJETO.
 // Foi criado para gerar os dados experimentais necessários para o
-// Relatório de Análise de Complexidade (obrigatório para notas > 16).
+// Relatório de Análise de Complexidade.
 //
 // O programa gera grafos aleatórios de tamanho crescente e mede
 // o tempo de execução dos algoritmos de força bruta para encontrar
